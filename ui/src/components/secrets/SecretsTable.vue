@@ -278,7 +278,15 @@
                     this.secretsIterator = this.namespace === undefined ? useAllSecrets(this.$store, 20) : useNamespaceSecrets(this.$store, this.namespace, 20);
                 }
 
+                let emitReadOnly = false;
+                if (this.namespace !== undefined && this.secretsIterator.areNamespaceSecretsReadOnly === undefined) {
+                    emitReadOnly = true;
+                }
                 const fetch = await (this.secretsIterator as SecretIterator).next();
+                if (emitReadOnly && this.secretsIterator.areNamespaceSecretsReadOnly !== undefined) {
+                    this.$emit("update:isSecretReadOnly", this.secretsIterator.areNamespaceSecretsReadOnly);
+                }
+
                 if (fetch.length === 0) {
                     return undefined;
                 }

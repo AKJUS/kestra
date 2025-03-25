@@ -25,14 +25,6 @@ export class NamespaceSecretIterator extends EntityIterator<NamespaceSecret>{
         this.namespace = namespace;
     }
 
-    async checkNamespaceSecretsAreReadOnly() {
-        if (this.areNamespaceSecretsReadOnly === undefined) {
-            await this.doFetch();
-        }
-
-        return this.areNamespaceSecretsReadOnly;
-    }
-
     fetchOptions(): any {
         return {
             ...super.fetchOptions(),
@@ -68,13 +60,6 @@ export class AllSecretIterator extends EntityIterator<NamespaceSecret>{
         super(fetchSize, options);
         this.store = store;
         this.user = this.store.state?.["auth"]?.user;
-    }
-
-    async checkNamespaceSecretsAreReadOnly(namespace: string): Promise<boolean> {
-        if (this.areNamespaceSecretsReadOnly?.[namespace] === undefined) {
-            this.areNamespaceSecretsReadOnly[namespace] = await new NamespaceSecretIterator(this.store, namespace, 1).areNamespaceSecretsReadOnly();
-        }
-        return Promise.resolve(this.areNamespaceSecretsReadOnly[namespace]);
     }
 
     async fetchCall(): Promise<{ total: number; results: NamespaceSecret[], readOnly: boolean }> {

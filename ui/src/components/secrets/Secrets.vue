@@ -10,21 +10,22 @@
             </ul>
         </template>
     </Navbar>
-    <section data-component="FILENAME_PLACEHOLDER" class="d-flex flex-column fill-height container padding-bottom min-w-auto ms-auto me-auto">
-        <Layout
-            v-if="configs?.secretsEnabled === undefined"
-            :title="$t('demos.secrets.title')"
-            :image="{source: sourceImg, alt: $t('demos.secrets.title')}"
-        >
-            <template #message>
-                {{ $t('demos.secrets.message') }}
-            </template>
-        </Layout>
-        <el-divider />
-        <p>Here are secret-type environment variables identified at instance start-time:</p>
+    <section data-component="FILENAME_PLACEHOLDER" class="d-flex flex-column fill-height container padding-bottom" :class="configs?.secretsEnabled === undefined ? 'min-w-auto ms-auto me-auto' : ''">
+        <template v-if="configs?.secretsEnabled === undefined">
+            <Layout
+                :title="$t('demos.secrets.title')"
+                :image="{source: sourceImg, alt: $t('demos.secrets.title')}"
+            >
+                <template #message>
+                    {{ $t('demos.secrets.message') }}
+                </template>
+            </Layout>
+            <el-divider />
+            <p>Here are secret-type environment variables identified at instance start-time:</p>
+        </template>
         <SecretsTable
             :filterable="configs?.secretsEnabled !== undefined"
-            key-only
+            :key-only="configs?.secretsEnabled === undefined"
             :namespace="configs?.secretsEnabled === true ? undefined : (configs?.systemNamespace ?? 'system')"
             :add-secret-modal-visible="addSecretModalVisible"
             @update:add-secret-modal-visible="addSecretModalVisible = $event"
