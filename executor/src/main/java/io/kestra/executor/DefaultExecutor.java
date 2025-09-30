@@ -15,12 +15,12 @@ import io.kestra.core.models.flows.sla.Violation;
 import io.kestra.core.models.tasks.ExecutableTask;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.models.tasks.WorkerGroup;
+import io.kestra.core.models.triggers.TriggerId;
 import io.kestra.core.models.triggers.multipleflows.MultipleCondition;
 import io.kestra.core.models.triggers.multipleflows.MultipleConditionStorageInterface;
 import io.kestra.core.queues.QueueException;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
-import io.kestra.core.repositories.TriggerRepositoryInterface;
 import io.kestra.core.runners.*;
 import io.kestra.core.runners.Executor;
 import io.kestra.core.server.ClusterEvent;
@@ -34,6 +34,8 @@ import io.kestra.core.trace.TracerFactory;
 import io.kestra.core.utils.*;
 import io.kestra.plugin.core.flow.ForEachItem;
 import io.kestra.plugin.core.flow.WorkingDirectory;
+import io.kestra.scheduler.TriggerEventQueue;
+import io.kestra.scheduler.events.TriggerExecutionTerminated;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.context.event.ApplicationEventPublisher;
 import io.opentelemetry.api.trace.Span;
@@ -66,11 +68,6 @@ public class DefaultExecutor implements Executor {
 
     @Inject
     private ApplicationEventPublisher<ServiceStateChangeEvent> eventPublisher;
-
-    @Inject
-    private TriggerRepositoryInterface triggerRepository;
-    @Inject
-    private SchedulerTriggerStateInterface triggerState;
 
     @Inject
     @Named(QueueFactoryInterface.EXECUTION_NAMED)
@@ -137,6 +134,8 @@ public class DefaultExecutor implements Executor {
     private SLAMonitorStateStore  slaMonitorStateStore;
     @Inject
     private ConcurrencyLimitStateStore concurrencyLimitStateStore;
+    @Inject
+    private TriggerEventQueue triggerEventQueue;
 
     @Inject
     private MetricRegistry metricRegistry;
@@ -1038,17 +1037,8 @@ public class DefaultExecutor implements Executor {
                 // IMPORTANT: this is to cover an edge case, execution created for failed trigger didn't have any taskrun so they will arrive directly here.
                 // We need to detect that and reset them as they will never reach the reset code later on this method.
                 if (execution.getTrigger() != null && execution.getState().isFailed() && ListUtils.isEmpty(execution.getTaskRunList())) {
-                    FlowWithSource flow = executor.getFlow();
-
-                    if (flow == null) {
-                        log.error("Couldn't reset trigger for execution {} as flow {} is missing. Trigger {} might stay stuck.",
-                            execution.getId(),
-                            execution.getTenantId() + "/" + execution.getNamespace() + "/" + execution.getFlowId(),
-                            execution.getTrigger().getId()
-                        );
-                    } else {
-                        triggerRepository.findByUid(Trigger.uid(execution)).ifPresent(trigger -> this.triggerState.update(executionService.resetExecution(flow, execution, trigger)));
-                    }
+                    TriggerId triggerId = TriggerId.of(execution.getTenantId(), execution.getNamespace(), execution.getFlowId(), execution.getTrigger().getId());
+                    triggerEventQueue.send(new TriggerExecutionTerminated(triggerId, execution.getId(), execution.getState().getCurrent()));
                 }
 
                 return;
@@ -1134,8 +1124,8 @@ public class DefaultExecutor implements Executor {
 
                 // purge the trigger: reset scheduler trigger at end
                 if (execution.getTrigger() != null) {
-                    FlowWithSource flow = executor.getFlow();
-                    triggerRepository.findByUid(Trigger.uid(execution)).ifPresent(trigger -> this.triggerState.update(executionService.resetExecution(flow, execution, trigger)));
+                    TriggerId triggerId = TriggerId.of(execution.getTenantId(), execution.getNamespace(), execution.getFlowId(), execution.getTrigger().getId());
+                    triggerEventQueue.send(new TriggerExecutionTerminated(triggerId, execution.getId(), execution.getState().getCurrent()));
                 }
 
                 if (cleanExecutionQueue) {
