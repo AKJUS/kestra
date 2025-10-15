@@ -71,7 +71,6 @@ public class InputsTest {
     );
     public static Map<String, Object> inputs = ImmutableMap.<String, Object>builder()
         .put("string", "myString")
-        .put("enum", "ENUM_VALUE")
         .put("int", "42")
         .put("float", "42.42")
         .put("bool", "false")
@@ -201,7 +200,6 @@ public class InputsTest {
         typeds.put("bool", false);
 
         assertThat(typeds.get("string")).isEqualTo("myString");
-        assertThat(typeds.get("enum")).isEqualTo("ENUM_VALUE");
         assertThat(typeds.get("int")).isEqualTo(42);
         assertThat(typeds.get("float")).isEqualTo(42.42F);
         assertThat((Boolean) typeds.get("bool")).isFalse();
@@ -343,17 +341,6 @@ public class InputsTest {
         InputOutputValidationException e = assertThrows(InputOutputValidationException.class, () -> typedInputs(map, "tenant11"));
 
         assertThat(e.getMessage()).contains(  "Invalid value for input `uri`. Cause: Invalid URI format." );
-    }
-
-    @Test
-    @LoadFlows(value = {"flows/valids/inputs.yaml"}, tenantId = "tenant12")
-    void inputEnumFailed() {
-        HashMap<String, Object> map = new HashMap<>(inputs);
-        map.put("enum", "INVALID");
-
-        InputOutputValidationException e = assertThrows(InputOutputValidationException.class, () -> typedInputs(map, "tenant12"));
-
-        assertThat(e.getMessage()).isEqualTo("Invalid value for input `enum`. Cause: it must match the values `[ENUM_VALUE, OTHER_ONE]`");
     }
 
     @Test

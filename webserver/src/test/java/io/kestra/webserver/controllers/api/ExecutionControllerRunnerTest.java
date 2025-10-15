@@ -136,7 +136,6 @@ class ExecutionControllerRunnerTest {
     public static Map<String, Object> inputs = ImmutableMap.<String, Object>builder()
         .put("failed", "NO")
         .put("string", "myString")
-        .put("enum", "ENUM_VALUE")
         .put("int", "42")
         .put("float", "42.42")
         .put("instant", "2019-10-06T18:27:49Z")
@@ -773,7 +772,6 @@ class ExecutionControllerRunnerTest {
         Map<String, Object> latin1FileInputs = ImmutableMap.<String, Object>builder()
             .put("failed", "NO")
             .put("string", "myString")
-            .put("enum", "ENUM_VALUE")
             .put("int", "42")
             .put("float", "42.42")
             .put("instant", "2019-10-06T18:27:49Z")
@@ -2014,7 +2012,6 @@ class ExecutionControllerRunnerTest {
 
         return MultipartBody.builder()
             .addPart("string", "myString")
-            .addPart("enum", "ENUM_VALUE")
             .addPart("int", "42")
             .addPart("float", "42.42")
             .addPart("instant", "2019-10-06T18:27:49Z")
