@@ -17,10 +17,11 @@ import io.kestra.core.models.executions.Execution;
 import io.kestra.core.models.triggers.*;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.ListUtils;
+import io.kestra.core.services.ConditionService;
+import io.kestra.core.services.LabelService;
 import io.kestra.core.validations.ScheduleValidation;
 import io.kestra.core.validations.TimezoneId;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Null;
 import lombok.AccessLevel;
@@ -33,7 +34,6 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.throwPredicate;
 
@@ -213,15 +213,10 @@ public class Schedule extends AbstractTrigger implements Schedulable, TriggerOut
     @Null
     private final Duration interval = null;
 
-    @Valid
     @Schema(
-        title = "(Deprecated) Conditions on date. Use `conditions` instead.",
-        description = "List of schedule conditions in order to limit the schedule trigger date."
+        title = "The inputs to pass to the scheduled flow"
     )
-    @PluginProperty
-    @Deprecated
-    private List<ScheduleCondition> scheduleConditions;
-    
+    @PluginProperty(dynamic = true)
     private Map<String, Object> inputs;
 
     @Schema(
@@ -243,13 +238,6 @@ public class Schedule extends AbstractTrigger implements Schedulable, TriggerOut
     private Map<String, Object> backfill;
     
     private RecoverMissedSchedules recoverMissedSchedules;
-
-    @Override
-    public List<Condition> getConditions() {
-        List<Condition> conditions = Stream.concat(ListUtils.emptyOnNull(this.conditions).stream(),
-            ListUtils.emptyOnNull(this.scheduleConditions).stream().map(c -> (Condition) c)).toList();
-        return conditions.isEmpty() ? null : conditions;
-    }
 
     @Override
     public ZonedDateTime nextEvaluationDate(ConditionContext conditionContext, Optional<? extends TriggerContext> last) {
