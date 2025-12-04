@@ -63,7 +63,6 @@ public abstract class AbstractJdbcFlowRepository extends AbstractJdbcRepository 
     public static final Field<String> SOURCE_FIELD = field("source_code", String.class);
     public static final Field<Integer> REVISION_FIELD  =  field("revision", Integer.class);
 
-    private final QueueInterface<FlowInterface> flowQueue;
     private final ApplicationEventPublisher<CrudEvent<FlowInterface>> eventPublisher;
     private final ModelValidator modelValidator;
     private final PluginDefaultService pluginDefaultService;
@@ -82,7 +81,6 @@ public abstract class AbstractJdbcFlowRepository extends AbstractJdbcRepository 
         this.modelValidator = applicationContext.getBean(ModelValidator.class);
         this.eventPublisher = applicationContext.getBean(ApplicationEventPublisher.class);
         this.pluginDefaultService = applicationContext.getBean(PluginDefaultService.class);
-        this.flowQueue = applicationContext.getBean(QueueInterface.class, Qualifiers.byName(QueueFactoryInterface.FLOW_NAMED));
         this.jdbcRepository.setDeserializer(record -> {
             String source = record.get("value", String.class);
             String namespace = record.get("namespace", String.class);
@@ -714,12 +712,12 @@ public abstract class AbstractJdbcFlowRepository extends AbstractJdbcRepository 
         if (checkUpdate.isPresent()) {
             throw checkUpdate.get();
         }
-        
+
         // Persist
         return this.save(flow, CrudEventType.UPDATE);
     }
 
-    @SneakyThrows({QueueException.class, FlowProcessingException.class})
+    @SneakyThrows(FlowProcessingException.class)
     @VisibleForTesting
     public FlowWithSource save(GenericFlow flow, CrudEventType crudEventType) throws ConstraintViolationException {
 
@@ -744,7 +742,6 @@ public abstract class AbstractJdbcFlowRepository extends AbstractJdbcRepository 
 
         this.jdbcRepository.persist(flow, fields);
 
-        flowQueue.emit(flow);
         eventPublisher.publishEvent(new CrudEvent<>(flow, nullOrExisting, crudEventType));
 
         return flowWithSource.toBuilder().revision(revision).build();
@@ -803,7 +800,6 @@ public abstract class AbstractJdbcFlowRepository extends AbstractJdbcRepository 
 
         this.jdbcRepository.persist(deleted, fields);
 
-        flowQueue.emit(deleted);
         eventPublisher.publishEvent(CrudEvent.delete(flow));
         return deleted;
     }

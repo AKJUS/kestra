@@ -218,6 +218,9 @@ subprojects {subProj ->
             //assertj
             testImplementation 'org.assertj:assertj-core'
 
+            // awaitility
+            testImplementation 'org.awaitility:awaitility'
+
             agent "org.aspectj:aspectjweaver:1.9.25.1"
 
             testImplementation platform("io.qameta.allure:allure-bom")

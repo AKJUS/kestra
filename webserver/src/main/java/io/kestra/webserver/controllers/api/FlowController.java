@@ -17,6 +17,7 @@ import io.kestra.core.models.triggers.AbstractTrigger;
 import io.kestra.core.models.validations.ManualConstraintViolation;
 import io.kestra.core.models.validations.ModelValidator;
 import io.kestra.core.models.validations.ValidateConstraintViolation;
+import io.kestra.core.queues.QueueException;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.serializers.YamlParser;
@@ -61,6 +62,9 @@ import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static io.kestra.core.utils.Rethrow.throwConsumer;
+import static io.kestra.core.utils.Rethrow.throwFunction;
 
 @Validated
 @Controller("/api/v1/{tenant}/flows")
@@ -275,7 +279,7 @@ public class FlowController {
     @SneakyThrows
     protected FlowWithSource doCreate(final GenericFlow flow) {
         try {
-            return flowService.create(flow, true);
+            return flowService.create(flow);
         } catch (FlowProcessingException e) {
             if (e.getCause() instanceof ConstraintViolationException cve) {
                 throw cve;
@@ -293,11 +297,11 @@ public class FlowController {
         description = "All flow will be created / updated for this namespace.\n" +
                       "Flow that already created but not in `flows` will be deleted if the query delete is `true`"
     )
-    public List<FlowInterface> updateFlowsInNamespace(
+    public List<FlowWithSource> updateFlowsInNamespace(
         @Parameter(description = "The flow namespace") @PathVariable String namespace,
         @RequestBody(description = "A list of flows source code") @Body @Nullable String flows,
         @Parameter(description = "If missing flow should be deleted") @QueryValue(defaultValue = "true") Boolean delete
-    ) throws ConstraintViolationException {
+    ) throws Exception {
         List<String> sources = flows != null ? List.of(flows.split("---")) : new ArrayList<>();
 
         List<GenericFlow> genericFlows = sources
@@ -308,7 +312,7 @@ public class FlowController {
         return this.bulkUpdateOrCreate(namespace, genericFlows, delete, false);
     }
 
-    protected List<FlowInterface> bulkUpdateOrCreate(@Nullable String namespace, List<GenericFlow> flows, Boolean delete, Boolean allowNamespaceChild) {
+    protected List<FlowWithSource> bulkUpdateOrCreate(@Nullable String namespace, List<GenericFlow> flows, Boolean delete, Boolean allowNamespaceChild) throws Exception {
 
         if (namespace != null) {
             // control namespace to update
@@ -354,7 +358,7 @@ public class FlowController {
             .toList();
 
         // delete all not in updated ids
-        List<? extends FlowInterface> deleted = new ArrayList<>();
+        List<FlowWithSource> deleted = new ArrayList<>();
         if (delete) {
             if (namespace != null) {
                 deleted = flowRepository
@@ -365,17 +369,17 @@ public class FlowController {
             }
             deleted = deleted.stream()
                 .filter(flow -> !ids.contains(flow.getId()))
-                .peek(flow -> flowRepository.delete(flow))
+                .peek(throwConsumer(flow -> flowService.delete(flow)))
                 .toList();
         }
 
         // update or create flows
-        List<? extends FlowInterface> updatedOrCreated = flows.stream()
-            .map(flow ->
+        List<FlowWithSource> updatedOrCreated = flows.stream()
+            .map(throwFunction(flow ->
                 flowRepository.findById(tenantService.resolveTenant(), flow.getNamespace(), flow.getId())
-                    .map(existing -> flowRepository.update(flow, existing))
+                    .map(throwFunction(existing -> flowService.update(flow, existing)))
                     .orElseGet(() -> this.doCreate(flow))
-            )
+            ))
             .toList();
         return Stream.concat(deleted.stream(), updatedOrCreated.stream()).toList();
     }
@@ -388,7 +392,7 @@ public class FlowController {
         @Parameter(description = "The flow namespace") @PathVariable String namespace,
         @Parameter(description = "The flow id") @PathVariable String id,
         @RequestBody(description = "The flow source code") @Body String source
-    ) throws ConstraintViolationException, FlowProcessingException {
+    ) throws ConstraintViolationException, FlowProcessingException, QueueException {
         final String tenantId = tenantService.resolveTenant();
         Optional<Flow> existingFlow = flowRepository.findById(tenantId, namespace, id);
 
@@ -399,16 +403,8 @@ public class FlowController {
         // Parse source as RawFlow.
         GenericFlow genericFlow = GenericFlow.fromYaml(tenantId, source);
 
-        // Validate Subflows.
-
-        // Inject default plugin 'version' props before converting
-        // to flow to correctly resolve to plugin type.
         try {
-            FlowWithSource flow = pluginDefaultService.injectVersionDefaults(genericFlow, false);
-            flowService.checkValidSubflows(flow, tenantId);
-
-            // Persist
-            return HttpResponse.ok(updateFlow(genericFlow, existingFlow.get()));
+            return HttpResponse.ok(doUpdateFlow(genericFlow, existingFlow.get()));
         } catch (FlowProcessingException e) {
             if (e.getCause() instanceof ConstraintViolationException cve) {
                 throw cve;
@@ -418,8 +414,8 @@ public class FlowController {
         }
     }
 
-    protected FlowWithSource updateFlow(GenericFlow current, FlowInterface previous) {
-        return flowRepository.update(current, previous);
+    protected FlowWithSource doUpdateFlow(GenericFlow current, FlowInterface previous) throws FlowProcessingException, QueueException {
+        return flowService.update(current, previous);
     }
 
     @ExecuteOn(TaskExecutors.IO)
@@ -430,12 +426,12 @@ public class FlowController {
         description = "All flow will be created / updated for this namespace.\n" +
                       "Flow that already created but not in `flows` will be deleted if the query delete is `true`"
     )
-    public List<FlowInterface> bulkUpdateFlows(
+    public List<FlowWithSource> bulkUpdateFlows(
         @RequestBody(description = "A list of flows source code splitted with \"---\"") @Body @Nullable String flows,
         @Parameter(description = "If missing flow should be deleted") @QueryValue(defaultValue = "true") Boolean delete,
         @Parameter(description = "The namespace where to update flows") @QueryValue @Nullable String namespace,
         @Parameter(description = "If namespace child should are allowed to be updated") @QueryValue(defaultValue = "false") Boolean allowNamespaceChild
-    ) throws ConstraintViolationException {
+    ) throws Exception {
         List<String> sources = flows != null ? List.of(flows.split("---")) : new ArrayList<>();
         List<GenericFlow> genericFlows = sources.stream()
             .map(source -> GenericFlow.fromYaml(tenantService.resolveTenant(), source))
@@ -450,10 +446,10 @@ public class FlowController {
     public HttpResponse<Void> deleteFlow(
         @Parameter(description = "The flow namespace") @PathVariable String namespace,
         @Parameter(description = "The flow id") @PathVariable String id
-    ) {
+    ) throws QueueException {
         Optional<FlowWithSource> flow = flowRepository.findByIdWithSource(tenantService.resolveTenant(), namespace, id);
         if (flow.isPresent()) {
-            flowRepository.delete(flow.get());
+            flowService.delete(flow.get());
             return HttpResponse.status(HttpStatus.NO_CONTENT);
         } else {
             return HttpResponse.status(HttpStatus.NOT_FOUND);
@@ -647,13 +643,13 @@ public class FlowController {
         @Deprecated @Parameter(description = "The scope of the flows to include", deprecated = true) @Nullable @QueryValue List<FlowScope> scope,
         @Deprecated @Parameter(description = "A namespace filter prefix", deprecated = true) @Nullable @QueryValue String namespace,
         @Deprecated @Parameter(description = "A labels filter as a list of 'key:value'", deprecated = true) @Nullable @QueryValue @Format("MULTI") List<String> labels
-    ) {
+    ) throws QueueException {
         filters = mapLegacyQueryParamsToNewFilters(filters, query, scope, namespace, labels);
 
         List<Flow> list = flowRepository
             .findWithSource(Pageable.UNPAGED, tenantService.resolveTenant(), filters)
             .stream()
-            .peek(flowRepository::delete)
+            .peek(throwConsumer(flow -> flowService.delete(flow)))
             .collect(Collectors.toList());
 
         return HttpResponse.ok(BulkResponse.builder().count(list.size()).build());
@@ -667,11 +663,11 @@ public class FlowController {
     )
     public HttpResponse<BulkResponse> deleteFlowsByIds(
         @RequestBody(description = "A list of tuple flow ID and namespace as flow identifiers") @Body List<IdWithNamespace> ids
-    ) {
+    ) throws QueueException {
         List<Flow> list = ids
             .stream()
             .map(id -> flowRepository.findByIdWithSource(tenantService.resolveTenant(), id.getNamespace(), id.getId()).orElseThrow())
-            .peek(flowRepository::delete)
+            .peek(throwConsumer(flow -> flowService.delete(flow)))
             .collect(Collectors.toList());
 
         return HttpResponse.ok(BulkResponse.builder().count(list.size()).build());
@@ -690,7 +686,7 @@ public class FlowController {
         @Deprecated @Parameter(description = "The scope of the flows to include", deprecated = true) @Nullable @QueryValue List<FlowScope> scope,
         @Deprecated @Parameter(description = "A namespace filter prefix", deprecated = true) @Nullable @QueryValue String namespace,
         @Deprecated @Parameter(description = "A labels filter as a list of 'key:value'", deprecated = true) @Nullable @QueryValue @Format("MULTI") List<String> labels
-    ) {
+    ) throws Exception {
         filters = mapLegacyQueryParamsToNewFilters(filters, query, scope, namespace, labels);
 
         return HttpResponse.ok(BulkResponse.builder().count(setFlowsDisableByQuery(filters, true).size()).build());
@@ -704,7 +700,7 @@ public class FlowController {
     )
     public HttpResponse<BulkResponse> disableFlowsByIds(
         @RequestBody(description = "A list of tuple flow ID and namespace as flow identifiers") @Body List<IdWithNamespace> ids
-    ) {
+    ) throws Exception {
 
         return HttpResponse.ok(BulkResponse.builder().count(setFlowsDisableByIds(ids, true).size()).build());
     }
@@ -722,7 +718,7 @@ public class FlowController {
         @Deprecated @Parameter(description = "The scope of the flows to include", deprecated = true) @Nullable @QueryValue List<FlowScope> scope,
         @Deprecated @Parameter(description = "A namespace filter prefix", deprecated = true) @Nullable @QueryValue String namespace,
         @Deprecated @Parameter(description = "A labels filter as a list of 'key:value'", deprecated = true) @Nullable @QueryValue @Format("MULTI") List<String> labels
-    ) {
+    ) throws Exception {
         filters = mapLegacyQueryParamsToNewFilters(filters, query, scope, namespace, labels);
 
         return HttpResponse.ok(BulkResponse.builder().count(setFlowsDisableByQuery(filters, false).size()).build());
@@ -754,7 +750,7 @@ public class FlowController {
     )
     public HttpResponse<BulkResponse> enableFlowsByIds(
         @RequestBody(description = "A list of tuple flow ID and namespace as flow identifiers") @Body List<IdWithNamespace> ids
-    ) {
+    ) throws Exception {
 
         return HttpResponse.ok(BulkResponse.builder().count(setFlowsDisableByIds(ids, false).size()).build());
     }
@@ -821,27 +817,27 @@ public class FlowController {
         flowService.importFlow(tenantId, source);
     }
 
-    protected List<FlowWithSource> setFlowsDisableByIds(List<IdWithNamespace> ids, boolean disable) {
+    protected List<FlowWithSource> setFlowsDisableByIds(List<IdWithNamespace> ids, boolean disable) throws Exception {
         return ids
             .stream()
             .map(id -> flowRepository.findByIdWithSource(tenantService.resolveTenant(), id.getNamespace(), id.getId()).orElseThrow())
             .filter(flowWithSource -> disable != flowWithSource.isDisabled())
-            .peek(flow -> {
+            .peek(throwConsumer(flow -> {
                 GenericFlow genericFlowUpdated = parseFlowSource(FlowService.injectDisabled(flow.getSource(), disable));
-                flowRepository.update(genericFlowUpdated, flow);
-            })
+                flowService.update(genericFlowUpdated, flow);
+            }))
             .toList();
     }
 
-    protected List<FlowWithSource> setFlowsDisableByQuery(List<QueryFilter> filters, boolean disable) {
+    protected List<FlowWithSource> setFlowsDisableByQuery(List<QueryFilter> filters, boolean disable) throws Exception {
         return flowRepository
             .findWithSource(Pageable.UNPAGED, tenantService.resolveTenant(), filters)
             .stream()
             .filter(flowWithSource -> disable != flowWithSource.isDisabled())
-            .peek(flow -> {
+            .peek(throwConsumer(flow -> {
                 GenericFlow genericFlowUpdated = parseFlowSource(FlowService.injectDisabled(flow.getSource(), disable));
-                flowRepository.update(genericFlowUpdated, flow);
-            })
+                flowService.update(genericFlowUpdated, flow);
+            }))
             .toList();
     }
 
