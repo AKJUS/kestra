@@ -98,6 +98,10 @@ class ExecutionControllerRunnerTest {
     protected QueueInterface<Execution> executionQueue;
 
     @Inject
+    @Named(QueueFactoryInterface.EXECUTION_EVENT_NAMED)
+    protected QueueInterface<ExecutionEvent> executionEventQueue;
+
+    @Inject
     @Named(QueueFactoryInterface.KILL_NAMED)
     protected QueueInterface<ExecutionKilled> killQueue;
 
@@ -1317,9 +1321,9 @@ class ExecutionControllerRunnerTest {
         // listen to the execution queue
         AtomicReference<Execution> killedExecution = new AtomicReference<>();
         CountDownLatch killedLatch = new CountDownLatch(1);
-        Flux<Execution> receiveExecutions = TestsUtils.receive(executionQueue, e -> {
-            if (e.getLeft().getState().getCurrent() == State.Type.KILLED) {
-                killedExecution.set(e.getLeft());
+        Flux<ExecutionEvent> receiveExecutions = TestsUtils.receive(executionEventQueue, e -> {
+            if (e.getLeft().eventType() == ExecutionEventType.TERMINATED) {
+                killedExecution.set(executionRepositoryInterface.findById(e.getLeft().tenantId(), e.getLeft().executionId()).orElseThrow());
                 killedLatch.countDown();
             }
         });
