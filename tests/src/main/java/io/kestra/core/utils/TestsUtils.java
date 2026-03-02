@@ -59,6 +59,10 @@ abstract public class TestsUtils {
         subscribers.get().clear();
     }
 
+    public static String randomPassword() {
+        return IdUtils.create() + "Aa1!";
+    }
+
     public static String randomNamespace(String... prefix) {
         return TestsUtils.randomString(prefix);
     }

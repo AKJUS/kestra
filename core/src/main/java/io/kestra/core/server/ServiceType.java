@@ -14,7 +14,7 @@ public enum ServiceType {
     WORKER,
     CONTROLLER,
     INVALID;
-    
+
     @JsonCreator
     public static ServiceType fromString(final String value) {
         try {

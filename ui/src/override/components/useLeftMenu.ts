@@ -11,7 +11,6 @@ import {useI18n} from "vue-i18n";
 
 import {useMiscStore} from "override/stores/misc";
 
-import {getDashboard} from "../../components/dashboard/composables/useDashboards";
 import {shouldShowWelcome} from "../../utils/welcomeGuard";
 
 // Main icons
@@ -126,12 +125,6 @@ export function useLeftMenu() {
                 title: t("dashboards.labels.plural"),
                 href: {
                     name: "home",
-                    params: {
-                        dashboard: getDashboard({
-                            ...$route,
-                            name: "home"
-                        }, "id"),
-                    },
                 },
                 icon: {
                     element: ChartLineVariant,

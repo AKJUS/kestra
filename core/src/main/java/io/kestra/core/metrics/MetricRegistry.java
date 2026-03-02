@@ -18,14 +18,15 @@ import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.binder.MeterBinder;
 import io.micrometer.core.instrument.search.Search;
-import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.function.Supplier;
 
 import java.util.function.Supplier;
 
@@ -95,6 +96,8 @@ public class MetricRegistry {
     public static final String METRIC_EXECUTOR_EXECUTION_QUEUED_COUNT_DESCRIPTION = "The total number of executions queued by the Executor";
     public static final String METRIC_EXECUTOR_EXECUTION_POPPED_COUNT = "executor.execution.popped.count";
     public static final String METRIC_EXECUTOR_EXECUTION_POPPED_COUNT_DESCRIPTION = "The total number of executions popped by the Executor";
+    public static final String QUEUE_MESSAGE_LAG_COUNT = "queue.message.lag.count";
+    public static final String QUEUE_MESSAGE_LAG_COUNT_DESCRIPTION = "Total number of messages in the queue that are not yet consumed";
 
     public static final String METRIC_INDEXER_REQUEST_COUNT = "indexer.request.count";
     public static final String METRIC_INDEXER_REQUEST_COUNT_DESCRIPTION = "Total number of batches of records received by the Indexer";
@@ -151,6 +154,7 @@ public class MetricRegistry {
     public static final String TAG_STATE = "state";
     public static final String TAG_ATTEMPT_COUNT = "attempt_count";
     public static final String TAG_WORKER_GROUP = "worker_group";
+    public static final String TAG_QUEUE_NAME = "queue_name";
     public static final String TAG_TENANT_ID = "tenant_id";
     public static final String TAG_CLASS_NAME = "class_name";
     public static final String TAG_EXECUTION_KILLED_TYPE = "execution_killed_type";
@@ -165,11 +169,14 @@ public class MetricRegistry {
      */
     public static final String TAG_LABEL_PLACEHOLDER = "__none__";
 
-    @Inject
-    private MeterRegistry meterRegistry;
+    private final MeterRegistry meterRegistry;
 
-    @Inject
-    private MetricConfig metricConfig;
+    private final MetricConfig metricConfig;
+
+    public MetricRegistry(MeterRegistry meterRegistry, MetricConfig metricConfig) {
+        this.meterRegistry = meterRegistry;
+        this.metricConfig = metricConfig;
+    }
 
     /**
      * Tracks a monotonically increasing value.
@@ -181,6 +188,15 @@ public class MetricRegistry {
      */
     public Counter counter(String name, String description, String... tags) {
         return Counter.builder(metricName(name))
+            .description(description)
+            .tags(tags)
+            .register(this.meterRegistry);
+    }
+
+
+
+    public <T extends Number> Gauge gauge(String name, String description, Supplier<T> supplier, String... tags) {
+        return Gauge.builder(metricName(name), supplier)
             .description(description)
             .tags(tags)
             .register(this.meterRegistry);
@@ -275,6 +291,14 @@ public class MetricRegistry {
     }
 
     /**
+     * Search for an existing Gauges in the meter registry
+     * @param name The base metric name
+     */
+    public Collection<Gauge> findGauges(String name) {
+        return this.meterRegistry.find(metricName(name)).gauges();
+    }
+
+    /**
      * Search for an existing Timer in the meter registry
      * @param name The base metric name
      */
@@ -288,6 +312,14 @@ public class MetricRegistry {
      */
     public DistributionSummary findDistributionSummary(String name) {
         return this.meterRegistry.find(metricName(name)).summary();
+    }
+
+    /**
+     * Remove existing Meter in the meter registry
+     * @param meter The meter to remove
+     */
+    public void removeMeter(Meter meter) {
+        meterRegistry.remove(meter);
     }
 
     /**
@@ -332,14 +364,22 @@ public class MetricRegistry {
     public String[] tags(WorkerTrigger workerTrigger, String workerGroup, String... tags) {
         var baseTags = ArrayUtils.addAll(
             ArrayUtils.addAll(
-                this.tags(workerTrigger.getTrigger()),
-                tags
+                ArrayUtils.addAll(
+                    this.tags(workerTrigger.getTrigger()),
+                    tags
+                ),
+                workerGroupTags(workerGroup, tags)
             ),
             TAG_NAMESPACE_ID, workerTrigger.getTriggerContext().getNamespace(),
             TAG_FLOW_ID, workerTrigger.getTriggerContext().getFlowId()
         );
-        baseTags = workerGroup == null ? baseTags : ArrayUtils.addAll(baseTags, TAG_WORKER_GROUP, workerGroup);
+
+
         return workerTrigger.getTriggerContext().getTenantId() == null ? baseTags : ArrayUtils.addAll(baseTags, TAG_TENANT_ID, workerTrigger.getTriggerContext().getTenantId());
+    }
+
+    public String[] workerGroupTags(String workerGroup, String... tags) {
+        return ArrayUtils.addAll(tags, TAG_WORKER_GROUP, workerGroup != null ? workerGroup : "__default__");
     }
 
 

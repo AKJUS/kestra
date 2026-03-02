@@ -83,8 +83,9 @@ tasks.register('generateOpenapiSpec') {
     }
 }
 
-tasks.named('jar') {
+tasks.named('jar', Jar) {
     dependsOn updateOpenapiVersion
+    exclude '**/spring-configuration-metadata.json'
 }
 
 tasks.named('compileJava') {
