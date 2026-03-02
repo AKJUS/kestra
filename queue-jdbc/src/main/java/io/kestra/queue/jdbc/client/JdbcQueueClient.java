@@ -90,6 +90,24 @@ public class JdbcQueueClient {
         }
     }
 
+    public Integer queueLag(String queue, @Nullable String routingKey) {
+        return dslContextWrapper.transactionResult(configuration -> {
+            DSLContext ctx = DSL.using(configuration);
+
+            var condition = field("type").eq(queueNameToType(queue));
+            if (routingKey != null && !routingKey.isEmpty()) {
+                condition = condition.and(field("routing_key").in(routingKey));
+            } else {
+                condition = condition.and(field("routing_key").isNull());
+            }
+
+            return ctx.selectCount()
+                .from(jdbcRepository.getTable())
+                .where(condition)
+                .fetchOneInto(Integer.class);
+        });
+    }
+
     public record PublishedMessage(String queue, String routingKey, String key, String value) {}
 
     public void publish(List<PublishedMessage> messages) throws QueueException {

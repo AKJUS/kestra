@@ -3,9 +3,8 @@ package io.kestra.core.queues;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.kestra.core.metrics.MetricRegistry;
-import io.kestra.core.runners.Worker;
-import io.kestra.core.runners.WorkerGroupExecutorInterface;
-import io.kestra.core.runners.WorkerJob;
+import io.kestra.core.runners.WorkerGroupMetaStore;
+import io.kestra.core.runners.WorkerJobEvent;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.scheduling.annotation.Scheduled;
@@ -17,16 +16,14 @@ import java.time.Duration;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import static io.kestra.core.queues.QueueFactoryInterface.WORKERJOB_NAMED;
-
 @Slf4j
 @Singleton
 @Requires(property = "kestra.server-type", pattern = "(WEBSERVER|STANDALONE)")
 @Requires(property = "kestra.metric.queue.lag.enabled", value = "true")
 public class QueueLagPoller {
     private final MetricRegistry metricRegistry;
-    private final WorkerGroupExecutorInterface workerGroupExecutor;
-    private final BeanProvider<QueueInterface<WorkerJob>> workerJobQueueProvider;
+    private final WorkerGroupMetaStore workerGroupExecutor;
+    private final BeanProvider<KeyedDispatchQueueInterface<WorkerJobEvent>> workerJobQueueProvider;
 
     private final Cache<CacheKey, Integer> queueLagCache = Caffeine.newBuilder()
         .expireAfterWrite(Duration.ofSeconds(30))
@@ -34,8 +31,8 @@ public class QueueLagPoller {
 
     public QueueLagPoller(
         MetricRegistry metricRegistry,
-        WorkerGroupExecutorInterface workerGroupExecutor,
-        BeanProvider<QueueInterface<WorkerJob>> workerJobQueueProvider
+        WorkerGroupMetaStore workerGroupExecutor,
+        BeanProvider<KeyedDispatchQueueInterface<WorkerJobEvent>> workerJobQueueProvider
     ) {
         this.metricRegistry = metricRegistry;
         this.workerJobQueueProvider = workerJobQueueProvider;
@@ -46,34 +43,34 @@ public class QueueLagPoller {
     @Scheduled(fixedDelay = "300s", initialDelay = "30s")
     public void refreshWorkerGroups() {
         Set<String> availableWorkerGroups = workerGroupExecutor.listAllWorkerGroupKeys();
-        QueueInterface<WorkerJob> workerJobQueue = workerJobQueueProvider.get();
+        KeyedDispatchQueueInterface<WorkerJobEvent> workerJobQueue = workerJobQueueProvider.get();
         availableWorkerGroups.stream().filter(workerGroup ->
             metricRegistry.findGauges(MetricRegistry.QUEUE_MESSAGE_LAG_COUNT).stream().noneMatch(
                 gauge -> workerGroup.equals(gauge.getId().getTag(MetricRegistry.TAG_WORKER_GROUP))
             )
         ).forEach(workerGroup ->
             this.register(
-                getQueueLagForConsumerGroup(WORKERJOB_NAMED, workerGroup, Worker.class, workerJobQueue),
+                getQueueLagForConsumerGroup(workerGroup, workerJobQueue),
                 MetricRegistry.TAG_WORKER_GROUP, workerGroup,
-                MetricRegistry.TAG_QUEUE_NAME, WORKERJOB_NAMED
+                MetricRegistry.TAG_QUEUE_NAME, workerJobQueue.queueName()
             )
         );
     }
 
     @PostConstruct
     void initQueueMetrics() {
-        QueueInterface<WorkerJob> workerJobQueue = workerJobQueueProvider.get();
+        KeyedDispatchQueueInterface<WorkerJobEvent> workerJobQueue = workerJobQueueProvider.get();
         this.register(
-            getQueueLagForConsumerGroup(WORKERJOB_NAMED, null, Worker.class, workerJobQueue),
+            getQueueLagForConsumerGroup(null, workerJobQueue),
             MetricRegistry.TAG_WORKER_GROUP, "__default__",
-            MetricRegistry.TAG_QUEUE_NAME, WORKERJOB_NAMED
+            MetricRegistry.TAG_QUEUE_NAME, workerJobQueue.queueName()
         );
 
         workerGroupExecutor.listAllWorkerGroupKeys().forEach(workerGroupKey ->
             this.register(
-                getQueueLagForConsumerGroup(WORKERJOB_NAMED, workerGroupKey, Worker.class, workerJobQueue),
+                getQueueLagForConsumerGroup(workerGroupKey, workerJobQueue),
                 MetricRegistry.TAG_WORKER_GROUP, workerGroupKey,
-                MetricRegistry.TAG_QUEUE_NAME, WORKERJOB_NAMED
+                MetricRegistry.TAG_QUEUE_NAME, workerJobQueue.queueName()
             )
         );
     }
@@ -87,8 +84,8 @@ public class QueueLagPoller {
         );
     }
 
-    private Supplier<Number> getQueueLagForConsumerGroup(String queueName, String consumerGroup, Class<?> queueType, QueueInterface<?> queue) {
-        return () -> queueLagCache.get(new CacheKey(queueName, consumerGroup), (key) -> queue.queueLagForConsumerGroup(consumerGroup, queueType));
+    private Supplier<Number> getQueueLagForConsumerGroup(String consumerGroup, KeyedDispatchQueueInterface<WorkerJobEvent> queue) {
+        return () -> queueLagCache.get(new CacheKey(queue.queueName(), consumerGroup), (key) -> queue.queueLag(consumerGroup));
     }
 
     private record CacheKey(String queueName, String consumerGroup) { }

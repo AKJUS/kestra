@@ -14,7 +14,6 @@ import io.micronaut.context.annotation.Property;
 import io.micronaut.context.annotation.Replaces;
 import io.micronaut.test.annotation.MockBean;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -24,6 +23,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @KestraTest(startWorker = false)
 @Property(name = "kestra.server-type", value = "EXECUTOR")
@@ -32,8 +32,7 @@ public abstract class AbstractQueueLagTest {
     private static final int DEFAULT_TIMEOUT_SECONDS = 10;
 
     @Inject
-    @Named(QueueFactoryInterface.WORKERJOB_NAMED)
-    protected QueueInterface<WorkerJob> workerJobQueue;
+    protected KeyedDispatchQueueInterface<WorkerJobEvent> workerJobQueue;
 
     @Inject
     private RunContextFactory runContextFactory;
@@ -45,17 +44,16 @@ public abstract class AbstractQueueLagTest {
     void shouldReturnZeroLag_whenAllMessagesConsumed() throws Exception {
         // Given
         CountDownLatch consumedLatch = new CountDownLatch(1);
-        Runnable closeConsumer = workerJobQueue.receive(NO_LAG_TEST_WORKER_GROUP_NAME, Worker.class, either -> {
+        QueueSubscriber<WorkerJobEvent> closeConsumer = workerJobQueue.subscriber(NO_LAG_TEST_WORKER_GROUP_NAME).subscribe(either -> {
             consumedLatch.countDown();
-        }, true);
+        });
 
-        workerJobQueue.emit(NO_LAG_TEST_WORKER_GROUP_NAME, buildWorkerJob("io.kestra.lag.test"));
-        consumedLatch.await(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        Thread.sleep(1000);
-        closeConsumer.run();
+        workerJobQueue.emit(NO_LAG_TEST_WORKER_GROUP_NAME, buildWorkerJob("io.kestra.lag.test", NO_LAG_TEST_WORKER_GROUP_NAME));
+        assertTrue(consumedLatch.await(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+        closeConsumer.close();
 
         // When
-        Integer lag = workerJobQueue.queueLagForConsumerGroup(NO_LAG_TEST_WORKER_GROUP_NAME, Worker.class);
+        Integer lag = workerJobQueue.queueLag(NO_LAG_TEST_WORKER_GROUP_NAME);
 
         // Then
         assertThat(lag).isNotNull();
@@ -67,31 +65,29 @@ public abstract class AbstractQueueLagTest {
         // Given
         String consumerGroup = IdUtils.create();
         CountDownLatch consumedLatch = new CountDownLatch(1);
-        Runnable closeConsumer = workerJobQueue.receive(consumerGroup, Worker.class, either -> {
+        QueueSubscriber<WorkerJobEvent> closeConsumer = workerJobQueue.subscriber(NO_LAG_TEST_WORKER_GROUP_NAME).subscribe(either -> {
             consumedLatch.countDown();
-        }, true);
+        });
 
-        workerJobQueue.emit(consumerGroup, buildWorkerJob("io.kestra.lag.test"));
-        consumedLatch.await(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        Thread.sleep(1000);
-        closeConsumer.run();
+        workerJobQueue.emit(consumerGroup, buildWorkerJob("io.kestra.lag.test", consumerGroup));
+        assertTrue(consumedLatch.await(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+        closeConsumer.close();
 
-        workerJobQueue.emit(consumerGroup, buildWorkerJob("io.kestra.lag.test.new"));
-        Thread.sleep(1000);
+        workerJobQueue.emit(consumerGroup, buildWorkerJob("io.kestra.lag.test.new", consumerGroup));
 
         // When
-        Integer lag = workerJobQueue.queueLagForConsumerGroup(consumerGroup, Worker.class);
+        Integer lag = workerJobQueue.queueLag(consumerGroup);
 
         // Then
         assertThat(lag).isNotNull();
         assertThat(lag).isEqualTo(1);
     }
 
-    private WorkerJob buildWorkerJob(String namespace) {
+    private WorkerJobEvent buildWorkerJob(String namespace, String workerGroup) {
         Return task = Return.builder()
             .id("test-" + IdUtils.create())
             .type(Return.class.getName())
-            .format(io.kestra.core.models.property.Property.of("test"))
+            .format(io.kestra.core.models.property.Property.ofValue("test"))
             .build();
 
         Flow flow = Flow.builder()
@@ -103,18 +99,18 @@ public abstract class AbstractQueueLagTest {
         Execution execution = TestsUtils.mockExecution(flow, ImmutableMap.of());
         ResolvedTask resolvedTask = ResolvedTask.of(task);
 
-        return WorkerTask.builder()
+        return WorkerJobEvent.of(WorkerTask.builder()
             .runContext(runContextFactory.of(ImmutableMap.of()))
             .task(task)
             .taskRun(TaskRun.of(execution, resolvedTask))
-            .build();
+            .build(), workerGroup);
     }
 
 
     @MockBean
-    @Replaces(WorkerGroupExecutorInterface.class)
-    WorkerGroupExecutorInterface workerGroupExecutorInterface() {
-        WorkerGroupExecutorInterface workerGroupExecutorInterface = Mockito.mock(WorkerGroupExecutorInterface.class);
+    @Replaces(WorkerGroupMetaStore.class)
+    WorkerGroupMetaStore workerGroupExecutorInterface() {
+        WorkerGroupMetaStore workerGroupExecutorInterface = Mockito.mock(WorkerGroupMetaStore.class);
         Mockito.when(workerGroupExecutorInterface.listAllWorkerGroupKeys()).thenReturn(
             Set.of(TEST_CONSUMER_GROUP_NAME, NO_LAG_TEST_WORKER_GROUP_NAME)
         );

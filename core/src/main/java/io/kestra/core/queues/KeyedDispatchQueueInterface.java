@@ -13,4 +13,6 @@ public interface KeyedDispatchQueueInterface<T extends io.kestra.core.queues.eve
     CompletionStage<Void> emitAsync(String routingKey, List<T> messages);
 
     QueueSubscriber<T> subscriber(String routingKey);
+
+    Integer queueLag(String routingKey);
 }

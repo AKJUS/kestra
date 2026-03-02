@@ -10,12 +10,7 @@ import io.kestra.core.runners.SubflowExecutionResult;
 import io.kestra.core.runners.WorkerTask;
 import io.kestra.core.runners.WorkerTaskResult;
 import io.kestra.core.runners.WorkerTrigger;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.DistributionSummary;
-import io.micrometer.core.instrument.Gauge;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Tags;
-import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.*;
 import io.micrometer.core.instrument.binder.MeterBinder;
 import io.micrometer.core.instrument.search.Search;
 import jakarta.inject.Singleton;
@@ -158,7 +153,6 @@ public class MetricRegistry {
     public static final String TAG_TENANT_ID = "tenant_id";
     public static final String TAG_CLASS_NAME = "class_name";
     public static final String TAG_EXECUTION_KILLED_TYPE = "execution_killed_type";
-    public static final String TAG_QUEUE_NAME = "queue_name";
     public static final String TAG_LABEL_PREFIX = "label";
     /**
      * Sentinel value representing logical absence of label.
@@ -188,15 +182,6 @@ public class MetricRegistry {
      */
     public Counter counter(String name, String description, String... tags) {
         return Counter.builder(metricName(name))
-            .description(description)
-            .tags(tags)
-            .register(this.meterRegistry);
-    }
-
-
-
-    public <T extends Number> Gauge gauge(String name, String description, Supplier<T> supplier, String... tags) {
-        return Gauge.builder(metricName(name), supplier)
             .description(description)
             .tags(tags)
             .register(this.meterRegistry);

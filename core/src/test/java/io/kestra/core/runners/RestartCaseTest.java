@@ -319,7 +319,7 @@ public class RestartCaseTest {
 
         assertThat(firstExecution.getState().getCurrent()).isEqualTo(Type.FAILED);
          // restarting case
-        Execution restartedExecution = executionService.restart(firstExecution, null);
+        Execution restartedExecution = executionService.restart(firstExecution, flow, null);
         assertThat(restartedExecution).isNotNull();
         assertThat(restartedExecution.getId()).isEqualTo(firstExecution.getId());
         assertThat(restartedExecution.getState().getCurrent()).isEqualTo(Type.RESTARTED);
@@ -337,14 +337,13 @@ public class RestartCaseTest {
         assertThat(lastRestarted1.getDate().plus(10, ChronoUnit.SECONDS).isBefore(lastFailed1.getDate()));
 
         // replaying case
-        Execution replayedExecution = executionService.replay(firstExecution, firstExecution.findTaskRunByTaskIdAndValue("loop_test", List.of()).getId(), null);
+        Execution replayedExecution = executionService.replay(firstExecution, flow, firstExecution.findTaskRunByTaskIdAndValue("loop_test", List.of()).getId(), null, Optional.empty());
         assertThat(replayedExecution.getState().getCurrent()).isEqualTo(Type.RESTARTED);
         assertThat(replayedExecution.getId()).isNotEqualTo(firstExecution.getId());
 
         Execution finalReplayedExecution = runnerUtils.awaitChildExecution(
             flow,
             firstExecution,
-            replayedExecution,
             Duration.ofSeconds(60)
         );
         assertThat(finalReplayedExecution.getState().getCurrent()).isEqualTo(Type.FAILED);

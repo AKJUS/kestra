@@ -39,6 +39,11 @@ public class JdbcKeyedDispatchQueue<T extends KeyedDispatchEvent> extends Abstra
     }
 
     @Override
+    public Integer queueLag(String routingKey) {
+        return this.jdbcQueueClient.queueLag(queueName(), routingKey);
+    }
+
+    @Override
     protected void doEmit(String routingKey, byte[] message, String key) throws QueueException {
         jdbcQueueClient.publish(this.queueName(), routingKey, key, new String(message));
     }
