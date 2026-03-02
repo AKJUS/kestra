@@ -1,6 +1,7 @@
 package io.kestra.core.junit.extensions;
 
-import io.kestra.core.junit.annotations.LoadFlowsWithTenant;
+import io.kestra.core.junit.annotations.WithFlow;
+import io.kestra.core.models.flows.Flow;
 import io.kestra.core.utils.TestsUtils;
 import java.net.URISyntaxException;
 import lombok.SneakyThrows;
@@ -11,7 +12,7 @@ import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 
-public class FlowLoaderWithTenantExtension extends AbstractFlowLoaderExtension implements
+public class WithFlowExtension extends AbstractFlowLoaderExtension implements
     ParameterResolver, AfterEachCallback {
 
     private static final ExtensionContext.Namespace NAMESPACE =
@@ -22,19 +23,21 @@ public class FlowLoaderWithTenantExtension extends AbstractFlowLoaderExtension i
     @Override
     public boolean supportsParameter(ParameterContext parameterContext,
         ExtensionContext extensionContext) throws ParameterResolutionException {
-        return parameterContext.getParameter().getType() == String.class;
+        return parameterContext.getParameter().getType() == Flow.class;
     }
 
     @SneakyThrows
     @Override
     public Object resolveParameter(ParameterContext parameterContext,
         ExtensionContext extensionContext) throws ParameterResolutionException {
-        String tenantId = TestsUtils.randomTenant();
+        WithFlow withFlow = getLoadFlows(extensionContext);
+        String tenantId = StringUtils.isNotBlank(withFlow.tenantId()) ? withFlow.tenantId() : TestsUtils.randomTenant();
+
         ExtensionContext.Store store = extensionContext.getStore(NAMESPACE);
         store.put(KEY_TENANT_ID, tenantId);
-        LoadFlowsWithTenant loadFlows = getLoadFlows(extensionContext);
-        loadFlows(extensionContext, tenantId, loadFlows.value());
-        return tenantId;
+
+        loadFlows(extensionContext, tenantId, new String[] { withFlow.value() });
+        return getFlow(withFlow.value()).toBuilder().tenantId(tenantId).build();
     }
 
     @Override
@@ -43,15 +46,15 @@ public class FlowLoaderWithTenantExtension extends AbstractFlowLoaderExtension i
         String tenantId = store.get(KEY_TENANT_ID, String.class);
 
         if (StringUtils.isNotBlank(tenantId)) {
-            LoadFlowsWithTenant loadFlows = getLoadFlows(extensionContext);
-            deleteFlows(tenantId, loadFlows.value());
+            WithFlow withFlow = getLoadFlows(extensionContext);
+            deleteFlows(tenantId, new String[] { withFlow.value() });
         }
     }
 
-    private static LoadFlowsWithTenant getLoadFlows(ExtensionContext extensionContext) {
+    private static WithFlow getLoadFlows(ExtensionContext extensionContext) {
         return extensionContext.getTestMethod()
             .orElseThrow()
-            .getAnnotation(LoadFlowsWithTenant.class);
+            .getAnnotation(WithFlow.class);
     }
 
 }
