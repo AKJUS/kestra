@@ -124,7 +124,7 @@ public class H2Repository<T> extends io.kestra.jdbc.AbstractJdbcRepository<T> {
     }
 
     // We need to create H2 repositories for the queue as it uses an H2Repository named 'queue',
-    // we may find a way to only create this one at some point as here we create unecessary beans.
+    // we may find a way to only create this one at some point as here we create unnecessary beans.
     static class H2Condition implements io.micronaut.context.condition.Condition {
         @Override
         public boolean matches(ConditionContext context) {

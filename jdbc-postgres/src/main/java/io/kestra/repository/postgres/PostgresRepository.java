@@ -123,7 +123,7 @@ public class PostgresRepository<T> extends io.kestra.jdbc.AbstractJdbcRepository
     }
 
     // We need to create H2 repositories for the queue as it uses an H2Repository named 'queue',
-    // we may find a way to only create this one at some point as here we create unecessary beans.
+    // we may find a way to only create this one at some point as here we create unnecessary beans.
     static class PostgresCondition implements io.micronaut.context.condition.Condition {
         @Override
         public boolean matches(ConditionContext context) {

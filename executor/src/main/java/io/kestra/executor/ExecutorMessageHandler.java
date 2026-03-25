@@ -13,7 +13,7 @@ public interface ExecutorMessageHandler<T> {
     /**
      * Handle a message then return an {@link ExecutorContext} if the current execution must be updated.
      *
-     * @implNote implementors usually start by locking the current execution ,then process the message to avoid any concurrency issue.
+     * @implNote implementers usually start by locking the current execution, then process the message to avoid any concurrency issue.
      */
     Optional<ExecutorContext> handle(T message);
 }

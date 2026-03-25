@@ -66,7 +66,7 @@ public abstract class KestraContext {
 
     /**
      * Number of CPU cores allocated for the Kestra process.
-     * It defaults to the number of available CPU cores but can be overriden by setting {@link #KESTRA_ALLOCATED_CPU_CORES} configuration property.
+     * It defaults to the number of available CPU cores but can be overridden by setting {@link #KESTRA_ALLOCATED_CPU_CORES} configuration property.
      * It is used everywhere we compute a number of threads based on the number of CPU cores instead of directly relying on the number of available CPU cores.
      */
     public abstract int getAllocatedCpuCores();

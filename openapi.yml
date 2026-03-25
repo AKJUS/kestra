@@ -4,7 +4,7 @@ info:
   license:
     name: Apache 2.0
     url: https://raw.githubusercontent.com/kestra-io/kestra/master/LICENSE
-  version: 1.4.0-SNAPSHOT
+  version: 2.0.0-SNAPSHOT
 tags:
 - name: Flows
   description: Flows API
@@ -4581,7 +4581,7 @@ paths:
         schema:
           type: string
       requestBody:
-        description: A list of flows source code splitted with "---"
+        description: A list of flows source code split with "---"
         content:
           application/x-yaml:
             schema:
@@ -8049,11 +8049,6 @@ paths:
           nullable: true
           items:
             type: string
-        examples:
-          Sort by timestamp in ascending order:
-            value: timestamp:asc
-          Sort by trigger ID in descending order:
-            value: triggerId:desc
       - name: q
         in: query
         description: A string filter
@@ -8286,10 +8281,6 @@ components:
       - type
       type: object
       properties:
-        minLogLevel:
-          deprecated: true
-          allOf:
-          - $ref: "#/components/schemas/Level"
         id:
           title: A unique ID for the whole flow.
           minLength: 1

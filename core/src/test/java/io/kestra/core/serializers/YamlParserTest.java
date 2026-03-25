@@ -150,18 +150,6 @@ class YamlParserTest {
     }
 
     @Test
-    void listeners() {
-        ConstraintViolationException exception = assertThrows(
-            ConstraintViolationException.class,
-            () -> modelValidator.validate(this.parse("flows/invalids/listener.yaml"))
-        );
-
-        assertThat(exception.getConstraintViolations().size()).isEqualTo(2);
-        assertThat(new ArrayList<>(exception.getConstraintViolations()).getFirst().getMessage()).contains("must not be empty");
-        assertThat(new ArrayList<>(exception.getConstraintViolations()).get(1).getMessage()).isEqualTo("must not be empty");
-    }
-
-    @Test
     void ifConditionRequired() {
         ConstraintViolationException exception = assertThrows(
             ConstraintViolationException.class,

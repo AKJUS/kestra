@@ -66,7 +66,7 @@ class MiscControllerTest {
         assertThat(response).isNotNull();
         assertThat(response).isNotEmpty();
         // Kestra custom functions
-        assertThat(response).contains("now", "secret", "kv", "uuid", "json", "yaml");
+        assertThat(response).contains("now", "secret", "kv", "uuid", "yaml");
         // Pebble core functions
         assertThat(response).contains("max", "min", "range");
         // Should be sorted
